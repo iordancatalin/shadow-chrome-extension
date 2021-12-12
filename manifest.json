@@ -1,0 +1,28 @@
+{
+  "name": "Youtube Shadow",
+  "description": "Chrome extesion to watch youtube videos wihout ads.",
+  "version": "1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_icon": {
+      "16": "shadow.png",
+      "32": "shadow.png",
+      "48": "shadow.png",
+      "128": "shadow.png"
+    }
+  },
+  "icons": {
+    "16": "shadow.png",
+    "32": "shadow.png",
+    "48": "shadow.png",
+    "128": "shadow.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.youtube.com/*"],
+      "run_at": "document_end",
+      "js": ["content-script.js"],
+      "css": ["content-style.css"]
+    }
+  ]
+}
