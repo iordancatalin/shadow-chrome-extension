@@ -16,6 +16,11 @@ const dataStore = () => {
   };
 };
 
+const logErrorAndReturnNull = (error) => {
+  console.error(error);
+  return null;
+};
+
 const queryDOMElementTimes = (selector, times = 20) => {
   let count = 0;
 
@@ -30,7 +35,7 @@ const queryDOMElementTimes = (selector, times = 20) => {
     }
 
     if (count >= times) {
-      reject(`Cannot fine element for selecter -> ${selector}`);
+      reject(`Cannot find element for selecter -> ${selector}`);
       return;
     }
 
@@ -67,19 +72,26 @@ const createButton = (videoId, hiddenText = false) => {
   return button;
 };
 
-const addShadowButtonAndObserve = (target, hiddenText = false) => {
-  const appendShadowButtonToThunbnail = (ytdThumbnail) => {
-    if (ytdThumbnail.querySelector("[data-shadow=shadow-button]") == null) {
-      const { href: videoURL } = ytdThumbnail.firstElementChild;
+const addShadowButtonAndObserve = (
+  target,
+  hiddenText = false,
+  selector = "ytd-thumbnail"
+) => {
+  const appendShadowButtonToThumbnail = (ytdElement) => {
+    if (ytdElement.querySelector("[data-shadow=shadow-button]") == null) {
+      const { href: videoURL } = ytdElement.firstElementChild;
       const [, videoId] = videoURL.split("?v=");
 
-      ytdThumbnail.appendChild(createButton(videoId, hiddenText));
+      ytdElement.appendChild(createButton(videoId, hiddenText));
     }
   };
 
-  document
-    .querySelectorAll("ytd-thumbnail")
-    .forEach(appendShadowButtonToThunbnail);
+  document.querySelectorAll(selector).forEach(appendShadowButtonToThumbnail);
+
+  // No need to observe for changes if target is null
+  if (target == null) {
+    return null;
+  }
 
   const config = { childList: true };
 
@@ -87,8 +99,8 @@ const addShadowButtonAndObserve = (target, hiddenText = false) => {
     for (mutation of mutationList) {
       mutation.addedNodes.forEach((element) => {
         element
-          .querySelectorAll("ytd-thumbnail")
-          .forEach(appendShadowButtonToThunbnail);
+          .querySelectorAll(selector)
+          .forEach(appendShadowButtonToThumbnail);
       });
     }
   };
@@ -102,18 +114,20 @@ const addShadowButtonAndObserve = (target, hiddenText = false) => {
 const handleHomePage = async () => {
   const target = await queryDOMElementTimes(
     "#contents.style-scope.ytd-rich-grid-renderer"
-  );
+  ).catch(logErrorAndReturnNull);
   return addShadowButtonAndObserve(target);
 };
 
 const handleWatchVideoPage = async () => {
   const target = await queryDOMElementTimes(
     "#contents.style-scope.ytd-item-section-renderer"
-  );
+  ).catch(logErrorAndReturnNull);
   const observer = addShadowButtonAndObserve(target, true);
 
   // append a shadow button to the video player
-  const ytdPlayer = await queryDOMElementTimes("ytd-player#ytd-player");
+  const ytdPlayer = await queryDOMElementTimes("ytd-player#ytd-player").catch(
+    logErrorAndReturnNull
+  );
   if (ytdPlayer.querySelector("[data-shadow=shadow-button]") == null) {
     const [, videoId] = location.href.split("?v=");
     ytdPlayer.appendChild(createButton(videoId));
@@ -125,9 +139,21 @@ const handleWatchVideoPage = async () => {
 const handleSearchResultPage = async () => {
   const target = await queryDOMElementTimes(
     "#contents.style-scope.ytd-item-section-renderer"
-  );
+  ).catch(logErrorAndReturnNull);
 
   return addShadowButtonAndObserve(target);
+};
+
+const handleChannelVideosPage = async () => {
+  const target = await queryDOMElementTimes(
+    "#items.style-scope.ytd-grid-renderer"
+  ).catch(logErrorAndReturnNull);
+
+  return addShadowButtonAndObserve(target);
+};
+
+const handleChannelPlaystisPage = () => {
+  return addShadowButtonAndObserve(null, false, "ytd-playlist-thumbnail");
 };
 
 const addShadowButtonsForCurrentPage = async () => {
@@ -146,7 +172,26 @@ const addShadowButtonsForCurrentPage = async () => {
     return await handleSearchResultPage();
   }
 
-  return null;
+  // we are on the videos page of a channel
+  if (
+    (location.href.indexOf("/c/") !== -1 ||
+      location.href.indexOf("/channel/") !== -1) &&
+    location.href.endsWith("/videos") === true
+  ) {
+    return await handleChannelVideosPage();
+  }
+
+  // we are on the playlists page of a channel
+  if (
+    (location.href.indexOf("/c/") !== -1 ||
+      location.href.indexOf("/channel/") !== -1) &&
+    location.href.endsWith("/playlists") === true
+  ) {
+    return handleChannelPlaystisPage();
+  }
+
+  // default case: add button for existing ytd-thumbnails
+  return addShadowButtonAndObserve(null);
 };
 
 // This executes when the scprit is loaded
