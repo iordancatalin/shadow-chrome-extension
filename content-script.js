@@ -1,223 +1,133 @@
-const ICON_SOURCE = "https://i.ibb.co/zR1rj2N/output-onlinepngtools.png";
-const TEXT = "OPEN IN SHADOW";
-
-// Here we keep the sate of the application, and expose functions used to manipulate data
-const dataStore = () => {
-  let currentObserver = null;
-  let oldLocationHref = null;
-  return {
-    readOldLocationHref: () => oldLocationHref,
-    updateLocationHref: (newLocationHref) =>
-      (oldLocationHref = newLocationHref),
-    updateCurrentObserver: (newObserver) => {
-      currentObserver?.disconnect();
-      currentObserver = newObserver;
-    },
-  };
+const constants = {
+  iconSource: "https://i.ibb.co/zR1rj2N/output-onlinepngtools.png",
+  buttonText: "OPEN IN SHADOW",
+  shadowAppURL: "https://shadow-web-app.herokuapp.com/player/",
 };
 
-const logErrorAndReturnNull = (error) => {
-  console.error(error);
-  return null;
-};
-
-const queryDOMElementTimes = (selector, times = 20) => {
-  let count = 0;
-
-  const selectElement = (resolve, reject) => {
-    count++;
-
-    const element = document.querySelector(selector);
-
-    if (element != null) {
-      resolve(element);
-      return;
-    }
-
-    if (count >= times) {
-      reject(`Cannot find element for selecter -> ${selector}`);
-      return;
-    }
-
-    setTimeout(() => selectElement(resolve, reject), 1000);
-  };
-
-  return new Promise(selectElement);
-};
+const createOnclickHandler = (videoId) => () =>
+  window.open(`${constants.shadowAppURL}${videoId}`, "_blank");
 
 const createButton = (videoId, hiddenText = false) => {
   const image = document.createElement("img");
-
-  image.src = ICON_SOURCE;
-  image.alt = TEXT;
-  image.className = "icon-img";
+  image.src = constants.iconSource;
+  image.alt = constants.buttonText;
+  image.classList.add("icon-img");
 
   const buttonText = document.createElement("span");
-  buttonText.textContent = TEXT;
+  buttonText.textContent = constants.buttonText;
   buttonText.className = hiddenText === true ? "d-none" : "button-text";
 
   const button = document.createElement("button");
+  button.classList.add("open-button");
+
+  button.setAttribute("data-shadow", "shadow-button");
+  button.setAttribute("videoid", videoId);
+
+  button.onclick = createOnclickHandler(videoId);
+
+  // append childs
   button.appendChild(image);
   button.appendChild(buttonText);
-  button.className = "open-button";
-  button["data-shadow"] = "shadow-button";
-
-  button.addEventListener("click", () =>
-    window.open(
-      `https://shadow-web-app.herokuapp.com/player/${videoId}`,
-      "_blank"
-    )
-  );
 
   return button;
 };
 
-const addShadowButtonAndObserve = (
-  target,
-  hiddenText = false,
-  selector = "ytd-thumbnail"
-) => {
-  const appendShadowButtonToThumbnail = (ytdElement) => {
-    if (ytdElement.querySelector("[data-shadow=shadow-button]") == null) {
-      const { href: videoURL } = ytdElement.firstElementChild;
-      const [, videoId] = videoURL.split("?v=");
+const findVideoIdInYtdThumbnail = (ytdThumbnail) => {
+  const { href: videoURL } = ytdThumbnail.firstElementChild;
+  const [, videoId] = videoURL.split("?v=");
 
-      ytdElement.appendChild(createButton(videoId, hiddenText));
-    }
-  };
+  return videoId;
+};
 
-  document.querySelectorAll(selector).forEach(appendShadowButtonToThumbnail);
+const appendButtonToYtdThumbnail = (ytdThumbnail) => {
+  const videoId = findVideoIdInYtdThumbnail(ytdThumbnail);
 
-  // No need to observe for changes if target is null
-  if (target == null) {
-    return null;
+  if (videoId == null) {
+    return;
   }
 
-  const config = { childList: true };
-
-  const callback = (mutationList) => {
-    for (mutation of mutationList) {
-      mutation.addedNodes.forEach((element) => {
-        element
-          .querySelectorAll(selector)
-          .forEach(appendShadowButtonToThumbnail);
-      });
-    }
-  };
-
-  const observer = new MutationObserver(callback);
-  observer.observe(target, config);
-
-  return observer;
-};
-
-const handleHomePage = async () => {
-  const target = await queryDOMElementTimes(
-    "#contents.style-scope.ytd-rich-grid-renderer"
-  ).catch(logErrorAndReturnNull);
-  return addShadowButtonAndObserve(target);
-};
-
-const handleWatchVideoPage = async () => {
-  const target = await queryDOMElementTimes(
-    "#contents.style-scope.ytd-item-section-renderer"
-  ).catch(logErrorAndReturnNull);
-  const observer = addShadowButtonAndObserve(target, true);
-
-  // append a shadow button to the video player
-  const ytdPlayer = await queryDOMElementTimes("ytd-player#ytd-player").catch(
-    logErrorAndReturnNull
+  const existingButton = ytdThumbnail.querySelector(
+    "[data-shadow=shadow-button]"
   );
-  if (ytdPlayer.querySelector("[data-shadow=shadow-button]") == null) {
-    const [, videoId] = location.href.split("?v=");
-    ytdPlayer.appendChild(createButton(videoId));
-  }
 
-  return observer;
-};
-
-const handleSearchResultPage = async () => {
-  const target = await queryDOMElementTimes(
-    "#contents.style-scope.ytd-item-section-renderer"
-  ).catch(logErrorAndReturnNull);
-
-  return addShadowButtonAndObserve(target);
-};
-
-const handleChannelVideosPage = async () => {
-  const target = await queryDOMElementTimes(
-    "#items.style-scope.ytd-grid-renderer"
-  ).catch(logErrorAndReturnNull);
-
-  return addShadowButtonAndObserve(target);
-};
-
-const handleChannelPlaystisPage = () => {
-  return addShadowButtonAndObserve(null, false, "ytd-playlist-thumbnail");
-};
-
-const addShadowButtonsForCurrentPage = async () => {
-  // we are on the home page
-  if (location.href === "https://www.youtube.com/") {
-    return await handleHomePage();
-  }
-
-  // we are watching a video
-  if (location.href.includes("watch?v") === true) {
-    return await handleWatchVideoPage();
-  }
-
-  // we are on the search results page
-  if (location.href.includes("/results?search_query=") === true) {
-    return await handleSearchResultPage();
-  }
-
-  // we are on the videos page of a channel
   if (
-    (location.href.indexOf("/c/") !== -1 ||
-      location.href.indexOf("/channel/") !== -1) &&
-    location.href.endsWith("/videos") === true
+    existingButton != null &&
+    existingButton.getAttribute("videoid") !== videoId
   ) {
-    return await handleChannelVideosPage();
+    existingButton.onclick = createOnclickHandler(videoId);
+  } else if (existingButton == null) {
+    const hiddenText = ytdThumbnail.classList.contains(
+      "ytd-compact-video-renderer"
+    );
+    ytdThumbnail.appendChild(createButton(videoId, hiddenText));
   }
-
-  // we are on the playlists page of a channel
-  if (
-    (location.href.indexOf("/c/") !== -1 ||
-      location.href.indexOf("/channel/") !== -1) &&
-    location.href.endsWith("/playlists") === true
-  ) {
-    return handleChannelPlaystisPage();
-  }
-
-  // default case: add button for existing ytd-thumbnails
-  return addShadowButtonAndObserve(null);
 };
 
-// This executes when the scprit is loaded
-(async function () {
-  const { updateLocationHref, readOldLocationHref, updateCurrentObserver } =
-    dataStore();
+const processBatch = (elements, offset, batchSize, processor) => {
+  setTimeout(() => {
+    const endIndex =
+      offset + batchSize <= elements.length - 1
+        ? offset + batchSize
+        : elements.length - 1;
 
-  // Check every second if the url changed
-  // TODO: Find a better way to check if the url changed. Maybe listen to an event instead of of checking at every second.
-  setInterval(async () => {
-    if (readOldLocationHref() !== location.href) {
-      updateLocationHref(location.href);
-      updateCurrentObserver(await addShadowButtonsForCurrentPage());
+    for (let index = offset; index <= endIndex; index++) {
+      if (elements[index] != null) {
+        processor?.(elements[index]);
+      }
     }
-  }, 1000);
+  });
+};
 
+const processYtdThumbnails = () => {
+  const ytdThumbnails =
+    document.querySelectorAll("ytd-thumbnail, ytd-playlist-thumbnail") ?? [];
+  const batchSize = 20;
+  let offset = 0;
+
+  while (offset < ytdThumbnails.length) {
+    processBatch(ytdThumbnails, offset, batchSize, appendButtonToYtdThumbnail);
+
+    offset += batchSize;
+  }
+};
+
+const processPlayingVideo = () => {
+  const youtubePlayer = document.querySelector("ytd-player#ytd-player");
+  const existingButton = youtubePlayer.querySelector(
+    "[data-shadow=shadow-button]"
+  );
+  const [, videoId] = location.href.split("?v=");
+
+  if (
+    existingButton != null &&
+    existingButton.getAttribute("videoid") !== videoId
+  ) {
+    existingButton.onclick = createOnclickHandler(videoId);
+  } else if (existingButton == null) {
+    youtubePlayer.appendChild(createButton(videoId));
+  }
+};
+
+(function () {
   let timeoutId = null;
 
-  window.addEventListener("resize", async () => {
+  const bodyObserver = new MutationObserver(() => {
     if (timeoutId != null) {
       clearTimeout(timeoutId);
     }
 
-    timeoutId = setTimeout(
-      async () => updateCurrentObserver(await addShadowButtonsForCurrentPage()),
-      300
-    );
+    timeoutId = setTimeout(() => {
+      processYtdThumbnails();
+
+      // user is watching a video
+      if (location.href.includes("watch?v") === true) {
+        processPlayingVideo();
+      }
+    }, 500);
+  });
+
+  bodyObserver.observe(document.body, {
+    subtree: true,
+    childList: true,
   });
 })();
